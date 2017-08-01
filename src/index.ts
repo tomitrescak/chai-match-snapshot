@@ -139,4 +139,7 @@ export function chaiMatchSnapshot (chai: any, utils: any) {
   });
 }
 
+export { config } from './config';
+export { setupMocha } from './mocha';
+
 export default chaiMatchSnapshot;
