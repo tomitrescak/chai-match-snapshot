@@ -27,6 +27,28 @@ export type Config = {
   snapshotExtension: string;
 };
 
+export function parseStoryName(longName: string) {
+  let fileName = longName;
+  let folder = null;
+  let story = longName;
+
+  const parts = longName.split('/');
+  if (parts.length > 1) {
+    folder = parts.slice(0, parts.length - 1).join('/');
+    story = parts[parts.length - 1];
+    fileName = parts.join('_');
+  }
+
+  // remove white spaced from file
+  fileName = fileName.replace(/\s/g, '');
+
+  return {
+    fileName,
+    folder,
+    story
+  };
+}
+
 export const config: Config = {
   snapshotDir: '',
   serializer(obj: any): string {

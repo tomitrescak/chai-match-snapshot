@@ -1,4 +1,4 @@
-import { config, Config } from './config';
+import { config, Config, parseStoryName } from './config';
 
 export function setupMocha() {
   let Mocha = require('mocha');
@@ -35,11 +35,19 @@ export function setupMocha() {
         });
       };
 
+      context.storyOf = function(title: string, props: any, fn: any) {
+        const parsed = parseStoryName(title);
+        context.describe(parsed.fileName, () => fn(props));
+      };
+
       /**
      * Pending describe.
      */
 
       context.xdescribe = context.xcontext = context.describe.skip = function(title: string, fn: any) {
+        const pr = require('proxyrequire');
+        if (pr) { pr.unmockAll(); }
+
         return common.suite.skip({
           title: title,
           file: file,
@@ -78,7 +86,7 @@ export function setupMocha() {
      */
 
       context.xit = context.xspecify = context.it.skip = function(title: string) {
-        context.it(title);
+        // context.it(title);
       };
 
       /**
@@ -111,7 +119,7 @@ export function setupMocha() {
               className: topParent,
               title: name
             };
-            config.snapshotCalls = null;
+            // config.snapshotCalls = null;
             // console.log('!!!!!!!!!!!!!!!!');
             // console.log(TestConfig.currentTask);
             return fn();
