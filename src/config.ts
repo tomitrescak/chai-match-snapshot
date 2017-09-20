@@ -1,8 +1,5 @@
 export type Task = {
-    method?: string;
     title: string;
-    fn?: Function;
-    fileName?: string;
     className: string;
 };
 
@@ -23,7 +20,7 @@ export type Config = {
   currentTask: Task;
   snapshotCalls: SnapshotItem[];
   snapshotLoader(path: string, className: string): object;
-  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): void;
+  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): string;
   snapshotExtension: string;
 };
 

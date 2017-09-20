@@ -10,12 +10,12 @@ export class Exception extends Error {
 
 export class SnapshotException extends Exception {
     public expected: string;
-    public current: string;
+    public actual: string;
     public name: string;
-    constructor(public message: string, expected: string, current: string, name: string) {
+    constructor(public message: string, actual: string, expected: string, name: string) {
         super(message);
         this.expected = expected;
-        this.current = current;
+        this.actual = actual;
         this.name = name;
     }
 }

@@ -37,7 +37,8 @@ export function setupMocha() {
 
       context.storyOf = function(title: string, props: any, fn: any) {
         const parsed = parseStoryName(title);
-        context.describe(parsed.fileName, () => fn(props));
+        const tags = ' @story' + (props.tags ? (' ' + props.tags) : '');
+        context.describe(parsed.fileName + tags, () => fn(props));
       };
 
       /**
@@ -102,18 +103,21 @@ export function setupMocha() {
         let suite = suites[0];
         let newFn = function() {
           try {
-            let topParent = '';
             let name = this.test.title;
             let parent = this.test.parent;
+            let parents = [];
             while (parent != null) {
-              if (parent.parent && parent.parent.title) {
-                name = parent.title + ' ' + name;
-              }
               if (parent.title) {
-                topParent = parent.title;
+                parents.push(parent.title);
               }
               parent = parent.parent;
             }
+
+            // remove tags
+            let topParent = parents.reverse().join('_');
+
+            topParent = topParent.replace(/ @[^_]+/g, '');
+            topParent = topParent.replace(/\s/g, '');
 
             config.currentTask = {
               className: topParent,
