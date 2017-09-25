@@ -20,7 +20,7 @@ export type Config = {
   currentTask: Task;
   snapshotCalls: SnapshotItem[];
   snapshotLoader(path: string, className: string): object;
-  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): string;
+  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): { actual?: string, expected?: string };
   snapshotExtension: string;
 };
 

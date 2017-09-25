@@ -79,7 +79,12 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       if (config.onProcessSnapshots) {
         let value = config.onProcessSnapshots(currentTask.title, name, currentValue, snapshot);
         if (value) {
-          currentValue = value;
+          if (value.actual) {
+            currentValue = value.actual;
+          }
+          if (value.expected) {
+            snapshot = value.expected;
+          }
         }
       }
 
@@ -147,7 +152,7 @@ export function chaiMatchSnapshot(chai: any, utils: any) {
     try {
       matchSnapshot(obj, snapshotName, useDiff);
     } catch (ex) {
-      if (ex.actual) {
+      if (ex.actual && ex.expected) {
         new Assertion(ex.actual).to.equal(ex.expected);
       }
       throw ex;
