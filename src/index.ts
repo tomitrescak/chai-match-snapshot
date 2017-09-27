@@ -11,6 +11,20 @@ function stripComments(text: string) {
   return text;
 }
 
+function writeSnapshot(fileName: string, currentContent: object) {
+  let content = '';
+  try {
+    fs.statSync(fileName);
+    content = fs.readFileSync(fileName, { encoding: 'utf-8' }) || '';
+  } catch (ex) { /**/ }
+
+  const text = JSON.stringify(currentContent, null, 2);
+
+  if (content.length !== text.length || content !== text) {
+    fs.writeFileSync(fileName, text);
+  }
+}
+
 function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
   const snapshotDir = path.resolve(config.snapshotDir);
 
@@ -55,7 +69,8 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       // add current task
       snapshotCall.content[currentTask.title + ' ' + call.calls] = stripComments(config.serializer(current));
       if (!process.env.SNAPSHOT || currentTask.title.match(process.env.SNAPSHOT)) {
-        fs.writeFileSync(fileName, JSON.stringify(snapshotCall.content, null, 2));
+        // compare files if they exist
+        config.writeSnapshots = () => writeSnapshot(fileName, snapshotCall.content);
       }
       call.calls++;
     } else {

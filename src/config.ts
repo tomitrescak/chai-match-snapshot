@@ -22,6 +22,7 @@ export type Config = {
   snapshotLoader(path: string, className: string): object;
   onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): { actual?: string, expected?: string };
   snapshotExtension: string;
+  writeSnapshots: () => void;
 };
 
 export function parseStoryName(longName: string) {
@@ -55,5 +56,6 @@ export const config: Config = {
   snapshotCalls: null,
   snapshotLoader: null,
   snapshotExtension: 'json',
-  onProcessSnapshots: null
+  onProcessSnapshots: null,
+  writeSnapshots: null
 };

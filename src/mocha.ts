@@ -38,7 +38,18 @@ export function setupMocha() {
       context.storyOf = function(title: string, props: any, fn: any) {
         const parsed = parseStoryName(title);
         const tags = ' @story' + (props.tags ? (' ' + props.tags) : '');
-        context.describe(parsed.fileName + tags, () => fn(props));
+        context.describe(parsed.fileName + tags, () => {
+          before(() => {
+            config.writeSnapshots = null;
+            config.snapshotCalls = null;
+          });
+          after(() => {
+            if (config.writeSnapshots) {
+              config.writeSnapshots();
+            }
+          });
+          fn(props);
+        });
       };
 
       /**
