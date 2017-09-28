@@ -1,8 +1,8 @@
 import { Exception, SnapshotException } from './exception';
 import { config } from './config';
 
-const path = require('path');
-const fs = require('fs');
+import * as path from 'path';
+import * as fs from 'fs';
 
 function stripComments(text: string) {
   text = text.replace(/<!-- react-empty: \d+ -->\n?/g, '');
@@ -11,6 +11,7 @@ function stripComments(text: string) {
   return text;
 }
 
+let style = '';
 function writeSnapshot(fileName: string, currentContent: object) {
   let content = '';
   try {
@@ -22,6 +23,18 @@ function writeSnapshot(fileName: string, currentContent: object) {
 
   if (content.length !== text.length || content !== text) {
     fs.writeFileSync(fileName, text);
+  }
+
+  // write styles
+  let typeStyle = require('typestyle');
+  if (typeStyle) {
+    let getStyles = typeStyle.getStyles;
+    let val = getStyles();
+    if (val.length !== style.length || val !== style) {
+      const dir = path.dirname(fileName);
+      const stylePath = path.join(dir, 'generated.css');
+      fs.writeFileSync(style, val);
+    }
   }
 }
 
