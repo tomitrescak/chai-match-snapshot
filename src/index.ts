@@ -33,7 +33,7 @@ function writeSnapshot(fileName: string, currentContent: object) {
     if (val.length !== style.length || val !== style) {
       const dir = path.dirname(fileName);
       const stylePath = path.join(dir, 'generated.css');
-      fs.writeFileSync(style, val);
+      fs.writeFileSync(stylePath, val);
     }
   }
 }
