@@ -13,11 +13,26 @@ function stripComments(text: string) {
 
 let style = '';
 function writeSnapshot(fileName: string, currentContent: object) {
+  const socket = global['__socket'];
+  if (socket) {
+    try {
+      socket.sendMessage({
+        file: fileName,
+        content: currentContent
+      });
+      return;
+    } catch (ex) {
+      console.log('Problem sending to socket: ' + ex);
+    }
+  }
+
   let content = '';
   try {
     fs.statSync(fileName);
     content = fs.readFileSync(fileName, { encoding: 'utf-8' }) || '';
-  } catch (ex) { /**/ }
+  } catch (ex) {
+    /**/
+  }
 
   const text = JSON.stringify(currentContent, null, 2);
 
