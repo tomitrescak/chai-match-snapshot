@@ -1,6 +1,6 @@
 {
   "name": "chai-match-snapshot",
-  "version": "1.0.39",
+  "version": "1.2.0",
   "description": "Add matchSnapshot assertion",
   "main": "index.js",
   "scripts": {

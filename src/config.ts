@@ -14,15 +14,19 @@ export type SnapshotItem = {
   calls: TestFunctionCall[]
 };
 
+export type SnapshotMode = 'tcp' | 'drive' | 'both' | 'test';
+
 export type Config = {
-  snapshotDir: string;
-  serializer: (obj: any) => string;
   currentTask: Task;
   snapshotCalls: SnapshotItem[];
-  snapshotLoader(path: string, className: string): object;
-  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): { actual?: string, expected?: string };
+  snapshotDir: string;
   snapshotExtension: string;
-  writeSnapshots: () => void;
+  snapshotMode: SnapshotMode;
+  onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): { actual?: string, expected?: string };
+  replacer(key: string, value: any): any;
+  serializer(obj: any): string;
+  snapshotLoader(path: string, className: string): object;
+  writeSnapshots(): void;
 };
 
 export function parseStoryName(longName: string) {
@@ -55,6 +59,8 @@ export const config: Config = {
   currentTask: null,
   snapshotCalls: null,
   snapshotLoader: null,
+  replacer: null,
+  snapshotMode: 'test',
   snapshotExtension: 'json',
   onProcessSnapshots: null,
   writeSnapshots: null

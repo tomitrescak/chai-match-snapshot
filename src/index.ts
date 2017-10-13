@@ -1,8 +1,8 @@
-import { Exception, SnapshotException } from './exception';
-import { config } from './config';
-
 import * as path from 'path';
 import * as fs from 'fs';
+
+import { Exception, SnapshotException } from './exception';
+import { config } from './config';
 
 function stripComments(text: string) {
   text = text.replace(/<!-- react-empty: \d+ -->\n?/g, '');
@@ -12,7 +12,7 @@ function stripComments(text: string) {
 }
 
 let style = '';
-function writeSnapshot(fileName: string, currentContent: object) {
+function sendSnapshot(fileName: string, currentContent: object) {
   const socket = global['__socket'];
   if (socket) {
     try {
@@ -25,7 +25,9 @@ function writeSnapshot(fileName: string, currentContent: object) {
       console.log('Problem sending to socket: ' + ex);
     }
   }
+}
 
+function writeSnapshot(fileName: string, currentContent: object) {
   let content = '';
   try {
     fs.statSync(fileName);
@@ -35,25 +37,47 @@ function writeSnapshot(fileName: string, currentContent: object) {
   }
 
   const text = JSON.stringify(currentContent, null, 2);
-
   if (content.length !== text.length || content !== text) {
     fs.writeFileSync(fileName, text);
   }
+}
 
+function writeStyles(fileName: string) {
   // write styles
   let typeStyle = require('typestyle');
   if (typeStyle) {
-    let getStyles = typeStyle.getStyles;
-    let val = getStyles();
+    let val = typeStyle.getStyles();
     if (val.length !== style.length || val !== style) {
       const dir = path.dirname(fileName);
       const stylePath = path.join(dir, 'generated.css');
       fs.writeFileSync(stylePath, val);
+      style = val;
     }
   }
 }
 
-function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
+function updateSnapshots(fileName: string, currentContent: object) {
+  writeStyles(fileName);
+
+  if (config.snapshotMode === 'both' || config.snapshotMode === 'tcp') {
+    sendSnapshot(fileName, currentContent);
+  }
+
+  if (config.snapshotMode === 'both' || config.snapshotMode === 'drive') {
+    writeSnapshot(fileName, currentContent);
+  }
+}
+
+type MatchOptions = {
+  createDiff?: boolean;
+  decorator?: (source: string) => string;
+};
+
+function matchSnapshot(
+  current: any,
+  snapshotName = '',
+  { decorator = null }: MatchOptions = {}
+) {
   const snapshotDir = path.resolve(config.snapshotDir);
 
   if (!config.snapshotCalls) {
@@ -67,12 +91,19 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       currentTask.title = snapshotName;
     }
 
-    const fileName = path.join(snapshotDir, `${currentTask.className}_snapshots.${config.snapshotExtension}`);
+    const fileName = path.join(
+      snapshotDir,
+      `${currentTask.className}_snapshots.${config.snapshotExtension}`
+    );
     let snapshotCall = snapshotCalls.find(w => w.className === currentTask.className);
 
     // we either overwrite existing file or append to it
     if (snapshotCall == null) {
-      snapshotCall = { className: currentTask.className, content: process.env.UPDATE_SNAPSHOTS ? {} : null, calls: [] };
+      snapshotCall = {
+        className: currentTask.className,
+        content: null,
+        calls: []
+      };
       snapshotCalls.push(snapshotCall);
     }
 
@@ -83,8 +114,18 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       snapshotCall.calls.push(call);
     }
 
-    // we can update all snapshots or match against current one
-    if (process.env.UPDATE_SNAPSHOTS) {
+    let currentValue = stripComments(config.serializer(current));
+    if (decorator) {
+      currentValue = decorator(currentValue);
+    }
+
+    //////////////////////////////////////////
+    // UPDATE SNAPSHOTS
+
+    if (config.snapshotMode != null && config.snapshotMode !== 'test') {
+      if (!snapshotCall.content) {
+        snapshotCall.content = {};
+      }
       // make sure snapshot dir exists
       // TODO: save files to the location where tests are
       // The problem here is that I do not know how to access the root of FuseBox project
@@ -95,15 +136,13 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       }
 
       // add current task
-      snapshotCall.content[currentTask.title + ' ' + call.calls] = stripComments(config.serializer(current));
-      if (!process.env.SNAPSHOT || currentTask.title.match(process.env.SNAPSHOT)) {
-        // compare files if they exist
-        config.writeSnapshots = () => writeSnapshot(fileName, snapshotCall.content);
-      }
+      snapshotCall.content[currentTask.title + ' ' + call.calls] = currentValue;
+
+      // request to write snapshots
+      config.writeSnapshots = () => updateSnapshots(fileName, snapshotCall.content);
+
       call.calls++;
     } else {
-      let currentValue = stripComments(config.serializer(current));
-
       // check if we have loaded the file
       if (!snapshotCall.content) {
         if (config.snapshotLoader != null) {
@@ -112,7 +151,7 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
           try {
             fs.statSync(fileName);
             snapshotCall.content = JSON.parse(fs.readFileSync(fileName) as any) as any;
-          } catch (ex) {}
+          } catch (ex) {/**/}
         }
       }
 
@@ -132,7 +171,9 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       }
 
       if (!snapshotCall) {
-        throw new Exception(`Snapshot file for ${currentTask.className} does not exist at '${fileName}'!`);
+        throw new Exception(
+          `Snapshot file for ${currentTask.className} does not exist at '${fileName}'!`
+        );
       }
 
       if (!snapshot) {
@@ -140,41 +181,6 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
       }
 
       if (snapshot !== currentValue) {
-        if (createDiff) {
-          // use jsdiff to compare
-          //   let message = '';
-          //   var diff = jsdiff.diffChars(snapshot, currentValue);
-          //   diff.forEach(function(part) {
-          //     if (
-          //       typeof window === 'undefined' ||
-          //       window.location == null ||
-          //       window.location.href == null ||
-          //       window.location.href == 'about:blank'
-          //     ) {
-          //       if (part.added) {
-          //         message += '\x1b[32m' + part.value;
-          //       } else if (part.removed) {
-          //         message += '\x1b[31m' + part.value;
-          //       } else if (message) {
-          //         message += '\x1b[37m' + part.value.substring(0, 30) + '\n';
-          //       } else {
-          //         message += '\x1b[37m' + part.value.substring(part.value.length - 30);
-          //       }
-          //     } else {
-          //       if (part.added) {
-          //         message += '<span class="diffadded">' + part.value + '</span>';
-          //       } else if (part.removed) {
-          //         message += '<span class="diffremoved">' + part.value + '</span>';
-          //       } else if (message) {
-          //         message += part.value.substring(0, 30) + '<br />';
-          //       } else {
-          //         message += part.value.substring(part.value.length - 30);
-          //       }
-          //     }
-          //   });
-          let message = `${currentValue}\n\n\n===================\n\n\n${snapshot}`;
-          throw new SnapshotException(`Snapshots do not match: \n${message}`, currentValue, snapshot, name);
-        }
         throw new SnapshotException(`Snapshots do not match`, currentValue, snapshot, name);
       }
     }
@@ -190,10 +196,10 @@ function matchSnapshot(current: any, snapshotName = '', createDiff = false) {
 export function chaiMatchSnapshot(chai: any, utils: any) {
   const Assertion = chai.Assertion;
 
-  Assertion.addMethod('matchSnapshot', function(snapshotName: string, useDiff: boolean) {
+  Assertion.addMethod('matchSnapshot', function(snapshotName: string, options: MatchOptions) {
     let obj = this._obj;
     try {
-      matchSnapshot(obj, snapshotName, useDiff);
+      matchSnapshot(obj, snapshotName, options);
     } catch (ex) {
       if (ex.actual && ex.expected) {
         new Assertion(ex.actual).to.equal(ex.expected);

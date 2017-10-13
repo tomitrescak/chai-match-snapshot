@@ -31,7 +31,18 @@ export function setupMocha() {
         return common.suite.create({
           title: title,
           file: file,
-          fn: fn
+          fn: function() {
+            before(() => {
+              config.writeSnapshots = null;
+              config.snapshotCalls = null;
+            });
+            after(() => {
+              if (config.writeSnapshots) {
+                config.writeSnapshots();
+              }
+            });
+            fn.call(this);
+          }
         });
       };
 
@@ -107,8 +118,6 @@ export function setupMocha() {
       context.it.retries = function(n: number) {
         context.retries(n);
       };
-
-      context.config = function() {};
 
       context.it = context.specify = function(title: string, fn: any) {
         let suite = suites[0];
