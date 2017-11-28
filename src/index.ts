@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 import { Exception, SnapshotException } from './exception';
-import { config } from './config';
+import { config, SnapshotMode } from './config';
 
 function stripComments(text: string) {
   text = text.replace(/<!-- react-empty: \d+ -->\n?/g, '');
@@ -42,22 +42,32 @@ function writeSnapshot(fileName: string, currentContent: object) {
   }
 }
 
-function writeStyles(fileName: string) {
+function handleStyles(fileName: string, type: SnapshotMode) {
   // write styles
   let typeStyle = require('typestyle');
   if (typeStyle) {
     let val = typeStyle.getStyles();
     if (val.length !== style.length || val !== style) {
-      const dir = path.dirname(fileName);
-      const stylePath = path.join(dir, 'generated.css');
-      fs.writeFileSync(stylePath, val);
+      let file = path.basename(fileName);
+      file = file.substring(0, file.lastIndexOf('.'));
+
+      if (type === 'tcp' || type === 'both') {
+        sendSnapshot(`${file}.css`, { styles: val });
+      }
+
+      if (type === 'drive' || type === 'both') {
+        const dir = path.dirname(fileName);
+        
+        const stylePath = path.join(dir, `${file}.css`);
+        fs.writeFileSync(stylePath, val);
+      }
       style = val;
     }
   }
 }
 
 function updateSnapshots(fileName: string, currentContent: object) {
-  writeStyles(fileName);
+  handleStyles(fileName, config.snapshotMode);
 
   if (config.snapshotMode === 'both' || config.snapshotMode === 'tcp') {
     sendSnapshot(fileName, currentContent);
@@ -69,14 +79,13 @@ function updateSnapshots(fileName: string, currentContent: object) {
 }
 
 type MatchOptions = {
-  createDiff?: boolean;
-  decorator?: (source: string) => string;
+  serializer?: (source: any) => string;
 };
 
 function matchSnapshot(
   current: any,
   snapshotName = '',
-  { decorator = null }: MatchOptions = {}
+  { serializer }: MatchOptions = {}
 ) {
   const snapshotDir = path.resolve(config.snapshotDir);
 
@@ -114,10 +123,7 @@ function matchSnapshot(
       snapshotCall.calls.push(call);
     }
 
-    let currentValue = stripComments(config.serializer(current));
-    if (decorator) {
-      currentValue = decorator(currentValue);
-    }
+    let currentValue = stripComments(serializer ? serializer(current) : config.serializer(current));
 
     //////////////////////////////////////////
     // UPDATE SNAPSHOTS
@@ -126,6 +132,11 @@ function matchSnapshot(
       if (!snapshotCall.content) {
         snapshotCall.content = {};
       }
+
+      // add possible decorator
+      snapshotCall.content.cssClassName = currentTask.cssClassName;
+      snapshotCall.content.decorator = currentTask.decorator;
+
       // make sure snapshot dir exists
       // TODO: save files to the location where tests are
       // The problem here is that I do not know how to access the root of FuseBox project
@@ -166,6 +177,9 @@ function matchSnapshot(
           }
           if (value.expected) {
             snapshot = value.expected;
+
+            // override in stored
+            snapshotCall.content[name] = snapshot;
           }
         }
       }
@@ -177,7 +191,7 @@ function matchSnapshot(
       }
 
       if (!snapshot) {
-        throw new SnapshotException(`Snapshot does not exist!`, currentValue, null, name);
+        throw new SnapshotException(`Snapshot '${currentTask.title}' does not exist!`, currentValue, null, name);
       }
 
       if (snapshot !== currentValue) {

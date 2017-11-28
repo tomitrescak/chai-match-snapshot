@@ -1,6 +1,8 @@
 export type Task = {
     title: string;
     className: string;
+    cssClassName: string;
+    decorator: string;
 };
 
 export type TestFunctionCall = {
@@ -10,7 +12,7 @@ export type TestFunctionCall = {
 
 export type SnapshotItem = {
   className: string;
-  content: object;
+  content: any;
   calls: TestFunctionCall[]
 };
 
