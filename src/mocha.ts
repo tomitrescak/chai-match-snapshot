@@ -32,33 +32,15 @@ export function setupMocha() {
           title: title,
           file: file,
           fn: function() {
-            before(() => {
-              config.writeSnapshots = null;
-              config.snapshotCalls = null;
-            });
-            after(() => {
-              if (config.writeSnapshots) {
-                config.writeSnapshots();
-              }
-            });
             fn.call(this);
           }
         });
       };
 
       context.storyOf = function(title: string, props: any, fn: any) {
-        const parsed = parseStoryName(title);
-        const tags = ' @story' + (props.tags ? (' ' + props.tags) : '');
-        context.describe(parsed.fileName + tags, () => {
-          before(() => {
-            config.writeSnapshots = null;
-            config.snapshotCalls = null;
-          });
-          after(() => {
-            if (config.writeSnapshots) {
-              config.writeSnapshots();
-            }
-          });
+        // const parsed = parseStoryName(title);
+        const tags = (props.tags ? (' ' + props.tags) : '');
+        context.describe(title + tags, () => {
           fn(props);
         });
       };
@@ -139,10 +121,6 @@ export function setupMocha() {
             topParent = topParent.replace(/ @[^_]+/g, '');
             topParent = topParent.replace(/\s/g, '');
 
-            config.currentTask = {
-              className: topParent,
-              title: name
-            };
             // config.snapshotCalls = null;
             // console.log('!!!!!!!!!!!!!!!!');
             // console.log(TestConfig.currentTask);

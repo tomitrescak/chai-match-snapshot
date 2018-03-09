@@ -4,6 +4,33 @@ import * as fs from 'fs';
 import { Exception, SnapshotException } from './exception';
 import { config, SnapshotMode } from './config';
 
+// setup mocha
+const Runnable = require('mocha/lib/runnable');
+interface Context {
+  runnable: any;
+  title: string;
+  titleIndex: number;
+  names: { [index: string]: number };
+}
+
+const currentContext: Context = {
+  runnable: null,
+  title: '',
+  titleIndex: 0,
+  names: {}
+};
+
+const runnableRun = Runnable.prototype.run;
+Runnable.prototype.run = function() {
+  currentContext.runnable = this;
+  currentContext.title = this.title;
+  currentContext.titleIndex = 0;
+  currentContext.names = {
+    [currentContext.title]: 1
+  };
+  return runnableRun.apply(this, arguments);
+};
+
 function stripComments(text: string) {
   text = text.replace(/<!-- react-empty: \d+ -->\n?/g, '');
   text = text.replace(/<!-- react-text: \d+ -->\n?/g, '');
@@ -28,149 +55,154 @@ function sendSnapshot(fileName: string, currentContent: object) {
 }
 
 function writeSnapshot(fileName: string, currentContent: object) {
-  let content = '';
-  try {
-    fs.statSync(fileName);
-    content = fs.readFileSync(fileName, { encoding: 'utf-8' }) || '';
-  } catch (ex) {
-    /**/
-  }
+  const text = Object.getOwnPropertyNames(currentContent)
+    .filter(n => config.omitted.indexOf(n) === -1)
+    .map(c => {
+      let content = currentContent[c];
+      content = content.replace(/\\/g, '\\\\');
+      return `exports[\`${c}\`] = \`${content}\``;
+    })
+    .join('\n');
 
-  const text = JSON.stringify(currentContent, null, 2);
-  if (content.length !== text.length || content !== text) {
-    fs.writeFileSync(fileName, text);
-  }
+  fs.writeFileSync(fileName, text);
 }
 
 function handleStyles(fileName: string, type: SnapshotMode) {
   // write styles
-  let typeStyle = require('typestyle');
-  if (typeStyle) {
-    let val = typeStyle.getStyles();
-    if (val.length !== style.length || val !== style) {
-      let file = path.basename(fileName);
-      file = file.substring(0, file.lastIndexOf('.'));
+  if (config.getStyles) {
+    let val = config.getStyles();
+    let file = path.parse(fileName).name;
 
-      if (type === 'tcp' || type === 'both') {
-        sendSnapshot(`${file}.css`, { styles: val });
-      }
-
-      if (type === 'drive' || type === 'both') {
-        const dir = path.dirname(fileName);
-        
-        const stylePath = path.join(dir, `${file}.css`);
-        fs.writeFileSync(stylePath, val);
-      }
-      style = val;
+    if (type === 'tcp' || type === 'both') {
+      sendSnapshot(`${file}.css`, { styles: val });
     }
+    if (type === 'drive' || type === 'both') {
+      const dir = path.dirname(fileName);
+      const stylePath = path.join(dir, `${file}.css`);
+
+      fs.writeFileSync(stylePath, val);
+    }
+    style = val;
   }
 }
 
-function updateSnapshots(fileName: string, currentContent: object) {
-  handleStyles(fileName, config.snapshotMode);
+function updateSnapshots(snapshotName: string, styleName: string, currentContent: object) {
+  handleStyles(styleName, config.snapshotMode);
 
   if (config.snapshotMode === 'both' || config.snapshotMode === 'tcp') {
-    sendSnapshot(fileName, currentContent);
+    sendSnapshot(snapshotName, currentContent);
   }
 
-  if (config.snapshotMode === 'both' || config.snapshotMode === 'drive') {
-    writeSnapshot(fileName, currentContent);
+  if (
+    config.snapshotMode === 'both' ||
+    config.snapshotMode === 'drive' ||
+    config.snapshotMode === 'new'
+  ) {
+    writeSnapshot(snapshotName, currentContent);
   }
+}
+
+function getExistingSnaps(
+  snapshotDir: string,
+  snapshotFilePath: string
+): { [index: string]: string } {
+  let snaps = {};
+
+  if (!fs.existsSync(snapshotDir)) {
+    fs.mkdirSync(snapshotDir);
+  }
+
+  if (fs.existsSync(snapshotFilePath)) {
+    snaps = require(snapshotFilePath);
+  }
+  return snaps;
 }
 
 type MatchOptions = {
   serializer?: (source: any) => string;
+  cssClassName?: string;
+  decorator?: any;
 };
 
 function matchSnapshot(
   current: any,
   snapshotName = '',
-  { serializer }: MatchOptions = {}
+  { serializer, cssClassName, decorator }: MatchOptions = {},
+  testContext: Context
 ) {
-  const snapshotDir = path.resolve(config.snapshotDir);
-
-  if (!config.snapshotCalls) {
-    config.snapshotCalls = [];
+  let parentName = '';
+  let parent = testContext.runnable.parent;
+  while (parent) {
+    if (parent.title) {
+      parentName = parent.title + ' ' + parentName;
+    }
+    parent = parent.parent;
   }
-  const { currentTask, snapshotCalls } = config;
-  const currentTitle = currentTask.title;
+
+  const dirName = path.dirname(testContext.runnable.file);
+  const fileName = path.parse(testContext.runnable.file).name;
+  const extension = path.parse(testContext.runnable.file).ext;
+  const snapshotDir = path.join(dirName, config.snapshotFolder);
+  let snapshotFilePath = path.join(
+    snapshotDir,
+    fileName + extension + '.' + config.snapshotExtension
+  );
+
+  // file could have been renamed from original source to js (e.g. in wallaby.js)
+  let originalPath = snapshotFilePath;
+  let testExtensions = ['.js.', '.ts.', '.tsx.', ''];
+  for (let i = 0; i < testExtensions.length - 1; i++) {
+    try {
+      fs.statSync(snapshotFilePath);
+      break;
+    } catch (_a) {
+      snapshotFilePath = snapshotFilePath.replace(testExtensions[i], testExtensions[i + 1]);
+      if (testExtensions[i + 1] === '') {
+        snapshotFilePath = originalPath;
+      }
+    }
+  }
+
+  const styleFilePath = path.join(snapshotDir, fileName + '.css');
+
+  const name = testContext.title + (snapshotName ? ' ' + snapshotName : '');
+  if (!testContext.names[name]) {
+    testContext.names[name] = 1;
+  }
+
+  let index = testContext.names[name]++;
+  const testName = parentName + name + ' ' + index;
+
+  // in the new mode we will override all snapshots
+  const snaps =
+    config.snapshotMode === 'new' ? {} : getExistingSnaps(snapshotDir, snapshotFilePath);
+  let snapshot: string = snaps[testName];
 
   try {
-    if (snapshotName) {
-      currentTask.title = snapshotName;
-    }
-
-    const fileName = path.join(
-      snapshotDir,
-      `${currentTask.className}_snapshots.${config.snapshotExtension}`
-    );
-    let snapshotCall = snapshotCalls.find(w => w.className === currentTask.className);
-
-    // we either overwrite existing file or append to it
-    if (snapshotCall == null) {
-      snapshotCall = {
-        className: currentTask.className,
-        content: null,
-        calls: []
-      };
-      snapshotCalls.push(snapshotCall);
-    }
-
-    // find function
-    let call = snapshotCall.calls.find(w => w.name === currentTask.title);
-    if (call == null) {
-      call = { name: currentTask.title, calls: 1 };
-      snapshotCall.calls.push(call);
-    }
-
     let currentValue = stripComments(serializer ? serializer(current) : config.serializer(current));
 
     //////////////////////////////////////////
     // UPDATE SNAPSHOTS
 
     if (config.snapshotMode != null && config.snapshotMode !== 'test') {
-      if (!snapshotCall.content) {
-        snapshotCall.content = {};
+      if (cssClassName) {
+        snaps.cssClassName = cssClassName;
       }
-
-      // add possible decorator
-      snapshotCall.content.cssClassName = currentTask.cssClassName;
-      snapshotCall.content.decorator = currentTask.decorator;
-
-      // make sure snapshot dir exists
-      // TODO: save files to the location where tests are
-      // The problem here is that I do not know how to access the root of FuseBox project
-      try {
-        fs.statSync(snapshotDir);
-      } catch (ex) {
-        fs.mkdirSync(snapshotDir);
+      if (decorator) {
+        snaps.decorator = decorator;
       }
 
       // add current task
-      snapshotCall.content[currentTask.title + ' ' + call.calls] = currentValue;
+      snaps[testName] = currentValue;
 
       // request to write snapshots
-      config.writeSnapshots = () => updateSnapshots(fileName, snapshotCall.content);
-
-      call.calls++;
+      updateSnapshots(snapshotFilePath, styleFilePath, snaps);
     } else {
-      // check if we have loaded the file
-      if (!snapshotCall.content) {
-        if (config.snapshotLoader != null) {
-          snapshotCall.content = config.snapshotLoader(fileName, currentTask.className);
-        } else {
-          try {
-            fs.statSync(fileName);
-            snapshotCall.content = JSON.parse(fs.readFileSync(fileName) as any) as any;
-          } catch (ex) {/**/}
-        }
-      }
-
-      const name = currentTask.title + ' ' + call.calls++;
-      let snapshot = snapshotCall.content ? snapshotCall.content[name] : null;
+      //////////////////////////////////////////
+      // TEST SNAPSHOTS
 
       if (config.onProcessSnapshots) {
-        let value = config.onProcessSnapshots(currentTask.title, name, currentValue, snapshot);
+        let value = config.onProcessSnapshots(testName, name, currentValue, snapshot);
         if (value) {
           if (value.actual) {
             currentValue = value.actual;
@@ -179,19 +211,18 @@ function matchSnapshot(
             snapshot = value.expected;
 
             // override in stored
-            snapshotCall.content[name] = snapshot;
+            snaps[testName] = snapshot;
           }
         }
       }
 
-      if (!snapshotCall) {
-        throw new Exception(
-          `Snapshot file for ${currentTask.className} does not exist at '${fileName}'!`
-        );
-      }
-
       if (!snapshot) {
-        throw new SnapshotException(`Snapshot '${currentTask.title}' does not exist!`, currentValue, null, name);
+        throw new SnapshotException(
+          `Snapshot '${testName}' does not exist!`,
+          currentValue,
+          null,
+          name
+        );
       }
 
       if (snapshot !== currentValue) {
@@ -200,8 +231,6 @@ function matchSnapshot(
     }
   } catch (ex) {
     throw ex;
-  } finally {
-    currentTask.title = currentTitle;
   }
 
   return this;
@@ -213,10 +242,10 @@ export function chaiMatchSnapshot(chai: any, utils: any) {
   Assertion.addMethod('matchSnapshot', function(snapshotName: string, options: MatchOptions) {
     let obj = this._obj;
     try {
-      matchSnapshot(obj, snapshotName, options);
+      matchSnapshot(obj, snapshotName, options, currentContext);
     } catch (ex) {
       if (ex.actual && ex.expected) {
-        new Assertion(ex.actual).to.equal(ex.expected);
+        new Assertion(ex.actual).to.equal(ex.expected, 'Snapshots do not match');
       }
       throw ex;
     }

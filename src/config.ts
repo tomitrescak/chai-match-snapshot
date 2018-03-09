@@ -1,10 +1,3 @@
-export type Task = {
-    title: string;
-    className: string;
-    cssClassName: string;
-    decorator: string;
-};
-
 export type TestFunctionCall = {
   name: string;
   calls: number;
@@ -16,10 +9,11 @@ export type SnapshotItem = {
   calls: TestFunctionCall[]
 };
 
-export type SnapshotMode = 'tcp' | 'drive' | 'both' | 'test';
+export type SnapshotMode = 'tcp' | 'drive' | 'both' | 'test' | 'new';
 
 export type Config = {
-  currentTask: Task;
+  omitted: string[];
+  snapshotFolder: string;
   snapshotCalls: SnapshotItem[];
   snapshotDir: string;
   snapshotExtension: string;
@@ -27,8 +21,7 @@ export type Config = {
   onProcessSnapshots(taskName: string, snapshotName: string, current: string, expected: string): { actual?: string, expected?: string };
   replacer(key: string, value: any): any;
   serializer(obj: any): string;
-  snapshotLoader(path: string, className: string): object;
-  writeSnapshots(): void;
+  getStyles(): string;
 };
 
 export function parseStoryName(longName: string) {
@@ -58,12 +51,13 @@ export const config: Config = {
   serializer(obj: any): string {
     throw new Error('Please create your initialiser');
   },
-  currentTask: null,
   snapshotCalls: null,
-  snapshotLoader: null,
   replacer: null,
   snapshotMode: 'test',
-  snapshotExtension: 'json',
+  snapshotExtension: 'snap',
+  snapshotFolder: '__snapshots__',
   onProcessSnapshots: null,
-  writeSnapshots: null
+  omitted: ['cssClassName', 'decorator'],
+  getStyles: null,
+
 };
